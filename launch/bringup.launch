@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="ip" default="192.168.1.29"/>
+  <arg name="port" default="3000"/>
+
+  <!-- jx sensor driver -->
+  <node pkg="iraytek_ros_driver" type="iraytek_ros_driver" name="iraytek_ros_driver" output="screen">
+    <param name="ip"      type="string"   value="$(arg ip)"/>
+    <param name="port"    type="int"      value="$(arg port)"/>
+  </node>
+  
+</launch>
