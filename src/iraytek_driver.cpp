@@ -327,7 +327,7 @@ int main(int argc, char *argv[])
   while (ros::ok())
   {
     ros::spinOnce();
-    pub_fslse_color_image();
+    pub_false_color_image();
     r.sleep();
   }
 
