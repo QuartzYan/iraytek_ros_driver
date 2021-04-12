@@ -30,12 +30,14 @@ LONG s_hSerial = 0;
 IRNETHANDLE m_hchann = IRNETHANDLE(-1);
 IRNETHANDLE m_serialconnect = IRNETHANDLE(-1);
 
-//ros::Publisher image_pub_;
-image_transport::Publisher image_pub_;
+//ros::Publisher temp_pub_;
+image_transport::Publisher temp_pub_, false_color_pub_;
+cv::Mat temp_c_;
+cv::Point max_temp_point_, min_temp_point_;
+bool pub_false_color_;
+float render_max_temp_, render_min_temp_;
 int32_t port_, channelno_, streamno_;
 std::string devicename_, ip_, username_, password_;
-
-cv_bridge::CvImage out_cv_image;
 
 static void rawCallback(char* data, int width, int height, void* context)
 {
@@ -66,22 +68,23 @@ static void tempCallback(IRNETHANDLE hdle, float *temp_table, unsigned int imgwi
       if (temp > max_temp)
       {
         max_temp = temp;
+        max_temp_point_ = cv::Point(r, c);
       }
       if (temp < min_temp)
       {
         min_temp = temp;
+        min_temp_point_ = cv::Point(r, c);
       }
     }
   }
-  // ROS_INFO("max_temp:%.3f min_temp:%.3f", max_temp, min_temp);
 
-  // cv::Mat im;
-  // cv::applyColorMap(temp_k_matrix, im, cv::COLORMAP_JET);
+  temp_c_matrix.copyTo(temp_c_);
 
+  cv_bridge::CvImage out_cv_image;
   temp_k_matrix.copyTo(out_cv_image.image);
   out_cv_image.encoding = "mono16";
 
-  image_pub_.publish(out_cv_image.toImageMsg());
+  temp_pub_.publish(out_cv_image.toImageMsg());
 }
 
 static void nomalvideo(char *pbuff, int headsize, int datasize, int timetick, int biskeyframe, void *context)
@@ -190,6 +193,41 @@ static void messageCallback(IRNETHANDLE hHandle, WPARAM wParam, LPARAM lParam, v
   return;
 }
 
+static void pub_false_color_image()
+{
+  if(pub_false_color_ && !temp_c_.empty())
+  {
+    cv::Mat filter_temp_c_(temp_c_.rows, temp_c_.cols, CV_8UC1);
+    float k = 255.0 / (abs(render_max_temp_) + abs(render_min_temp_));
+    for (uint32_t r = 0; r < temp_c_.rows; r++)
+    {
+      for (uint32_t c = 0; c < temp_c_.cols; c++)
+      {
+        float temp =  temp_c_.at<float>(r, c);
+        if (temp > render_max_temp_)
+        {
+          filter_temp_c_.at<uint8_t>(r, c) = 255;
+        }
+        else if (temp < render_min_temp_)
+        {
+          filter_temp_c_.at<uint8_t>(r, c) = 0;
+        }
+        else
+        {
+          filter_temp_c_.at<uint8_t>(r, c) = uint8_t((temp + abs(render_min_temp_)) * k);
+        }
+      }
+    }
+
+    cv::Mat im;
+    cv::applyColorMap(filter_temp_c_, im, cv::COLORMAP_JET);
+    cv_bridge::CvImage out_cv_image;
+    im.copyTo(out_cv_image.image);
+    out_cv_image.encoding = "rgb8";
+    false_color_pub_.publish(out_cv_image.toImageMsg());
+  }
+}
+
 int main(int argc, char *argv[])
 {
   ros::init(argc, argv, "iraytek_driver");
@@ -202,9 +240,13 @@ int main(int argc, char *argv[])
   private_nh_.param<std::string>("devicename", devicename_, "AT31F");
   private_nh_.param<std::string>("username", username_, "888888");
   private_nh_.param<std::string>("password", password_, "888888");
+  private_nh_.param<bool>("pub_false_color", pub_false_color_, false);
+  private_nh_.param<float>("render_max_temp", render_max_temp_, 100.0);
+  private_nh_.param<float>("render_min_temp", render_min_temp_, 0.000);
   //nh_.advertise<sensor_msgs::Image>("ir_image", 1);
   image_transport::ImageTransport it_(nh_);
-  image_pub_ = it_.advertise("ir_image", 1);
+  temp_pub_ = it_.advertise("ir/temp_raw", 1);
+  false_color_pub_ = it_.advertise("ir/false_color", 1);
 
   //init irnet sdk
   IRNET_ClientStartup(0, NULL);
@@ -285,7 +327,7 @@ int main(int argc, char *argv[])
   while (ros::ok())
   {
     ros::spinOnce();
-    //image_pub_.publish(out_cv_image.toImageMsg());
+    pub_fslse_color_image();
     r.sleep();
   }
 
